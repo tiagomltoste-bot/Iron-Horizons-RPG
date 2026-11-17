@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Iron Horizons: RPG — Protótipo de Portavel</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#183B50;--paper:#f4efe2;--gold:#8a6a2a;--panel:rgba(244,239,226,.94);--line:rgba(24,59,80,.28);color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#f1ead8;--paper:#102431;--gold:#d5b978;--panel:rgba(16,36,49,.93);--line:rgba(213,185,120,.38);color-scheme:dark}}
+:root[data-theme="dark"]{--ink:#f1ead8;--paper:#102431;--gold:#d5b978;--panel:rgba(16,36,49,.93);--line:rgba(213,185,120,.38);color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;overflow:hidden;background:#bcd9ea;color:var(--ink);font-family:"Cinzel",Georgia,"Times New Roman",serif}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:none}
+.box{position:fixed;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:13px;line-height:1.55}
+#hud{left:12px;top:calc(12px + env(safe-area-inset-top,0px))}
+#hud b{font-size:16px;color:var(--gold)}
+#help{left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:min(420px,calc(100% - 200px));font-size:12px}
+#ab{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:160px}
+#bar{height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}
+#cd{height:100%;width:100%;background:var(--gold)}
+#pick{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(16,36,49,.72);padding:16px;overflow:auto}
+#pick[hidden]{display:none}
+#pick h1{margin:0;color:#f1ead8;font-size:clamp(26px,5vw,42px);letter-spacing:.02em}
+#pick p{margin:0;color:#d5b978;font-size:15px}
+#cards{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+#on{font-size:12px}
+#chat{right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:min(280px,45vw);font-size:12px}
+#chat div{overflow-wrap:anywhere}
+#msg{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(340px,40vw);font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+#nick{font:inherit;font-size:15px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);width:min(260px,80vw);text-align:center}
+.card{width:210px;text-align:left;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px 16px;cursor:pointer}
+.card:hover,.card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.card h2{margin:0 0 6px;font-size:20px}
+.card span{display:block;font-size:13px;line-height:1.5}
+.card i{display:block;margin-top:8px;font-style:normal;font-size:12px;color:var(--gold)}
+</style>
+</head>
+<body>
+<div id="hud" class="box"><b id="cn"></b><br><span id="fps">0 FPS</span><br><span id="on">A ligar quando escolheres a classe</span></div>
+<div id="chat" class="box" hidden></div><input id="msg" maxlength="200" placeholder="Enter para falar" autocomplete="off" aria-label="Mensagem de chat">
+<div id="help" class="box">WASD ou setas: andar. Arrastar com o rato: rodar a câmara. Roda do rato: zoom. Espaço: habilidade. Enter: falar. C: mudar de classe.</div>
+<div id="ab" class="box"><span id="an"></span><div id="bar"><div id="cd"></div></div></div>
+<div id="pick"><h1>Iron Horizons: RPG</h1><p>Protótipo de Portavel. Escolhe a tua classe.</p><input id="nick" maxlength="16" placeholder="O teu nome" autocomplete="off" aria-label="O teu nome"><div id="cards"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const CLS=[
+ {id:'cav',nome:'Cavaleiro',papel:'Defesa e armadura pesada, corpo a corpo.',hab:'Golpe de espada',cd:1.2,cor:0x2f4f9a,cor2:0xaab4bd},
+ {id:'mag',nome:'Mago',papel:'Magia elemental à distância.',hab:'Orbe arcano',cd:1.0,cor:0x6a4aa8,cor2:0xd5b978},
+ {id:'lad',nome:'Ladino',papel:'Furtividade e dano rápido.',hab:'Investida',cd:2.0,cor:0x2f3b36,cor2:0x56864c}
+];
+/* ---------- cena ---------- */
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.25));
+document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xbcd9ea);scene.fog=new THREE.Fog(0xbcd9ea,38,95);
+const cam=new THREE.PerspectiveCamera(55,1,.1,200);
+scene.add(new THREE.HemisphereLight(0xe3efff,0x7a8a52,.95));
+const sun=new THREE.DirectionalLight(0xfff0cf,.9);sun.position.set(20,30,12);scene.add(sun);
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+/* ---------- ajudantes (modelos provisórios; trocar por GLB mais tarde) ---------- */
+const mats={};const M=c=>mats[c]||(mats[c]=new THREE.MeshLambertMaterial({color:c}));
+const flat=g=>{const n=g.toNonIndexed();n.computeVertexNormals();return n};
+const B=(w,h,d)=>new THREE.BoxGeometry(w,h,d);
+const C=(a,b,h,s)=>flat(new THREE.CylinderGeometry(a,b,h,s));
+const K=(r,h,s)=>flat(new THREE.ConeGeometry(r,h,s));
+const S=r=>flat(new THREE.SphereGeometry(r,8,6));
+function add(p,geo,col,x=0,y=0,z=0){const m=new THREE.Mesh(geo,typeof col==='number'?M(col):col);m.position.set(x,y,z);p.add(m);return m}
+const glow=new THREE.MeshBasicMaterial({color:0xffd98a});
+const world=new THREE.Group();scene.add(world);
+const col=[];const wall=(x,z,w,d)=>col.push({x,z,w:w/2,d:d/2});
+/* ---------- terreno ---------- */
+const flatPlane=(w,d,c,x,y,z)=>{const g=new THREE.PlaneGeometry(w,d);g.rotateX(-Math.PI/2);return add(world,g,c,x,y,z)};
+flatPlane(160,160,0x56864c,10,0,0);
+flatPlane(7,150,0xc5a36a,19.5,.01,0);
+flatPlane(80,150,0x3f7fa8,62,.02,0);
+const plaza=new THREE.CircleGeometry(7.5,20);plaza.rotateX(-Math.PI/2);add(world,plaza,0xc5a36a,0,.012,0);
+flatPlane(14,3.2,0xc5a36a,13.5,.014,0);
+/* cais */
+add(world,B(16,.2,3),0x8a6a45,26,.1,0);
+for(let x=19;x<=33;x+=3.5){add(world,C(.12,.12,1.2,5),0x5b4332,x,.0,1.7);add(world,C(.12,.12,1.2,5),0x5b4332,x,0,-1.7)}
+/* poço */
+add(world,C(1.3,1.4,.9,8),0xb9b4a6,0,.45,0);add(world,C(1,1,.1,8),0x3f7fa8,0,.86,0);wall(0,0,2.8,2.8);
+/* edifícios */
+function house(x,z,w,d,h,o={}){
+ const rot=o.rot||0,rh=o.rh||h*.7,g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=rot;
+ add(g,B(w,h,d),o.wall||0xe8dcc0,0,h/2,0);
+ add(g,B(w+.06,.22,d+.06),0x5b4332,0,h,0);
+ const rg=K(1,1,4);rg.rotateY(Math.PI/4);
+ add(g,rg,o.roof||0x3b5ea8,0,h+rh/2,0).scale.set(w*.78,rh,d*.78);
+ add(g,B(.9,1.7,.1),0x5b3a26,0,.85,d/2+.04);
+ add(g,B(.8,.7,.1),0xf3d98b,-w*.3,h*.6,d/2+.04);add(g,B(.8,.7,.1),0xf3d98b,w*.3,h*.6,d/2+.04);
+ world.add(g);const sw=Math.abs(Math.sin(rot))>.5;wall(x,z,sw?d:w,sw?w:d);
+}
+house(-9,-9,10,7,5,{rh:4});                 // estalagem
+house(5,-10,6,5,4);                          // loja
+house(12,-6,5,5,3.8);                        // casa
+house(-16,-1,5,5,3.6,{rot:Math.PI/2});       // casa
+house(-15,6,5,5.5,3.6,{rot:Math.PI/2});      // casa
+house(13.5,7.5,7,5,4,{wall:0xb89b6a,roof:0x7a5a3a}); // armazém do porto
+house(17,-11,3,3,9,{wall:0xb9b4a6,rh:3.5});  // torre de vigia
+/* bancas de mercado */
+function stall(x,z,c){const g=new THREE.Group();g.position.set(x,0,z);
+ add(g,B(2.4,.9,1),0x8a6a45,0,.45,0);
+ [[-1.2,-.5],[1.2,-.5],[-1.2,.5],[1.2,.5]].forEach(p=>add(g,C(.06,.06,2.3,4),0x5b4332,p[0],1.15,p[1]));
+ add(g,B(2.9,.12,1.9),c,0,2.3,0).rotation.x=.18;
+ [0xd9a441,0xc4553a,0x56864c].forEach((k,i)=>add(g,B(.4,.3,.4),k,-.8+i*.8,1.05,0));
+ world.add(g);wall(x,z,2.6,1.4)}
+stall(-4.5,5.5,0xc4553a);stall(0,6.5,0x3b5ea8);stall(4.5,5.5,0xe8b64a);
+/* barris, caixas e lanternas */
+[[17,2.7],[17.9,3.1],[17,-2.8]].forEach(p=>{add(world,C(.45,.45,.9,8),0x7a5a3a,p[0],.45,p[1]);wall(p[0],p[1],.9,.9)});
+add(world,B(.9,.9,.9),0x9a7a50,16.6,.45,-3.7);wall(16.6,-3.7,.9,.9);
+[[8,2.8],[8,-2.8],[14,2.8],[14,-2.8],[-5.5,-2],[5.5,-2]].forEach(p=>{add(world,C(.07,.07,2.6,5),0x3a3028,p[0],1.3,p[1]);add(world,S(.2),glow,p[0],2.7,p[1]);wall(p[0],p[1],.3,.3)});
+/* castelo na colina (cenário, fora da área jogável) */
+{const g=new THREE.Group();g.position.set(-5,0,-62);
+ add(g,C(18,24,6,10),0x6a9a4e,0,3,0);
+ add(g,B(14,9,9),0xc9c3b3,0,10.5,0);
+ [[-7.6,-5],[7.6,-5],[-7.6,5],[7.6,5]].forEach(p=>{add(g,C(2,2.2,13,8),0xb9b4a6,p[0],12.5,p[1]);add(g,K(2.7,4.5,8),0x3b5ea8,p[0],21.2,p[1])});
+ add(g,K(5.5,6,4),0x3b5ea8,0,18,0).rotation.y=Math.PI/4;world.add(g)}
+/* árvores com instancing */
+{let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;const T=[];
+ while(T.length<46){const x=-52+rnd()*68,z=-44+rnd()*88;if(x>-26&&x<19&&z>-18&&z<15)continue;T.push([x,z,.8+rnd()*.6])}
+ const tr=new THREE.InstancedMesh(C(.2,.28,1.6,5),M(0x6b4a2f),T.length);
+ const fo=new THREE.InstancedMesh(K(1.4,3.4,6),new THREE.MeshLambertMaterial({color:0xffffff}),T.length);
+ const d=new THREE.Object3D(),gs=[0x3d7a45,0x4a8a4c,0x356b3e],cc=new THREE.Color();
+ T.forEach((t,i)=>{d.scale.set(t[2],t[2],t[2]);d.position.set(t[0],.8*t[2],t[1]);d.updateMatrix();tr.setMatrixAt(i,d.matrix);
+  d.position.set(t[0],2.9*t[2],t[1]);d.updateMatrix();fo.setMatrixAt(i,d.matrix);fo.setColorAt(i,cc.setHex(gs[i%3]));
+  wall(t[0],t[1],.5,.5)});
+ world.add(tr,fo)}
+/* barcos */
+const boats=[[30,-5.5,.25],[37,5,-.3]].map((p,i)=>{const g=new THREE.Group();g.position.set(p[0],0,p[1]);g.rotation.y=p[2];
+ add(g,B(5,.8,1.8),0x7a5a3a,0,.1,0);add(g,C(.07,.07,5,5),0xd9cdb4,0,2.7,0);add(g,B(.05,3.3,2.5),0xf0e6d2,0,2.9,0);
+ world.add(g);return g});
+/* ---------- personagem ---------- */
+const hero=new THREE.Group();scene.add(hero);
+const shadow=new THREE.Mesh(new THREE.CircleGeometry(.6,12),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.25}));
+shadow.rotation.x=-Math.PI/2;scene.add(shadow);
+let R={};
+function build(c,H){H=H||hero;
+ H.clear();const skin=0xe0b48c;
+ const piv=(x,y)=>{const p=new THREE.Group();p.position.set(x,y,0);H.add(p);return p};
+ const legL=piv(-.18,.85),legR=piv(.18,.85),armL=piv(-.47,1.62),armR=piv(.47,1.62);
+ add(legL,B(.26,.85,.26),0x4a3a2c,0,-.42,0);add(legR,B(.26,.85,.26),0x4a3a2c,0,-.42,0);
+ add(armL,B(.2,.75,.2),c.cor,0,-.35,0);add(armR,B(.2,.75,.2),c.cor,0,-.35,0);
+ add(H,B(.72,.95,.4),c.cor,0,1.3,0);add(H,S(.28),skin,0,1.98,0);add(H,B(.5,.16,.5),0x5a3a22,0,2.18,-.02);
+ if(c.id==='cav'){add(H,B(.4,.2,.46),c.cor2,-.5,1.7,0);add(H,B(.4,.2,.46),c.cor2,.5,1.7,0);
+  add(H,B(.8,1.1,.07),0x2f4f9a,0,1.2,-.26);add(armL,B(.08,.75,.5),0x8a5a2a,-.12,-.65,.15);add(armL,B(.1,.25,.2),c.cor2,-.12,-.65,.15);
+  add(armR,B(.07,.07,1),0xdadfe3,0,-.75,.5)}
+ if(c.id==='mag'){add(H,K(.62,1.2,7),c.cor,0,.7,0);add(H,K(.38,.8,7),c.cor,0,2.55,0);add(H,B(.8,.1,.8),c.cor,0,2.18,0);
+  add(armR,C(.04,.04,2.2,5),0x6b4a2f,0,-.5,.4);add(armR,S(.15),new THREE.MeshBasicMaterial({color:0xb58cff}),0,.6,.4)}
+ if(c.id==='lad'){add(H,B(.62,.62,.62),c.cor,0,2.02,-.02);add(H,B(.5,.3,.1),skin,0,1.95,.3);
+  add(H,B(.9,1.05,.07),c.cor,0,1.15,-.26);add(H,B(.05,.4,.07),0xdadfe3,-.4,.95,.1);add(H,B(.05,.4,.07),0xdadfe3,.4,.95,.1);
+  add(H,B(.74,.12,.42),c.cor2,0,.95,0)}
+ const r={legL,legR,armL,armR};if(H===hero)R=r;return r;
+}
+/* ---------- estado ---------- */
+const P={x:0,y:0,z:10};let ci=0,playing=false,yaw=0,pitch=.5,dist=9,cd=0,swing=0,dash=0,ph=0,mv=0;
+const keys={};const fx=[];
+function setClass(i){ci=i;build(CLS[i]);$('#cn').textContent=CLS[i].nome;$('#an').textContent='Espaço: '+CLS[i].hab}
+const cards=$('#cards');
+CLS.forEach((c,i)=>{const b=document.createElement('button');b.className='card';b.innerHTML='<h2>'+c.nome+'</h2><span>'+c.papel+'</span><i>Habilidade: '+c.hab+'</i>';
+ b.onclick=()=>{setClass(i);playing=true;$('#pick').hidden=true;cd=0;try{localStorage.setItem('ih_nick',$('#nick').value)}catch(_){}netClass()};cards.appendChild(b)});
+function openPick(){playing=false;$('#pick').hidden=false;cards.firstChild.focus()}
+setClass(0);hero.rotation.y=Math.PI;try{$('#nick').value=localStorage.getItem('ih_nick')||''}catch(_){}
+/* ---------- controlos ---------- */
+addEventListener('keydown',e=>{
+ if(e.target&&e.target.tagName==='INPUT'){if(e.target.id==='msg'){if(e.key==='Enter'){const v=e.target.value.trim();if(v)send({t:'chat',m:v});e.target.value='';e.target.blur()}else if(e.key==='Escape')e.target.blur()}return}
+ const k=e.key.toLowerCase();
+ if(k==='enter'&&playing){e.preventDefault();$('#msg').focus();return}
+ if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)&&playing)e.preventDefault();
+ keys[k]=true;if(k===' '&&!e.repeat)ability();if(k==='c'&&playing)openPick()});
+$('#msg').addEventListener('focus',()=>{for(const k in keys)keys[k]=false});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+let drag=false,lx=0,ly=0;const cv=renderer.domElement;
+cv.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointerup',()=>{drag=false});
+cv.addEventListener('pointermove',e=>{if(!drag)return;yaw-=(e.clientX-lx)*.006;pitch=Math.max(.15,Math.min(1.15,pitch+(e.clientY-ly)*.005));lx=e.clientX;ly=e.clientY});
+cv.addEventListener('wheel',e=>{dist=Math.max(5,Math.min(15,dist+e.deltaY*.01))},{passive:true});
+/* ---------- colisões ---------- */
+function ok(x,z){if(x<-50||x>34.5||z<-44||z>44)return false;if(x>19&&Math.abs(z)>1.45)return false;
+ for(const c of col)if(Math.abs(x-c.x)<c.w+.4&&Math.abs(z-c.z)<c.d+.4)return false;return true}
+function step(dx,dz){if(ok(P.x+dx,P.z))P.x+=dx;if(ok(P.x,P.z+dz))P.z+=dz}
+/* ---------- habilidades ---------- */
+function ring(x,z,c,r0,r1,life,y=P.y){const m=new THREE.Mesh(new THREE.RingGeometry(r0,r0+.25,16),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.9,side:2}));
+ m.rotation.x=-Math.PI/2;m.position.set(x,y+.15,z);scene.add(m);fx.push({m,l:0,life,k:r1/r0,t:'r'})}
+function fxAb(i,x,z,r,y){const c=CLS[i],fxx=Math.sin(r),fz=Math.cos(r);
+ if(c.id==='cav')ring(x+fxx*1.4,z+fz*1.4,0xdadfe3,.5,2.3,.35,y);
+ else if(c.id==='mag'){const m=new THREE.Mesh(S(.3),new THREE.MeshBasicMaterial({color:0xb58cff}));m.position.set(x+fxx*.8,y+1.6,z+fz*.8);scene.add(m);fx.push({m,l:0,life:1.3,v:[fxx*14,fz*14],t:'o'})}
+ else ring(x,z,0x56864c,.4,1.8,.3,y)}
+function ability(){if(!playing||cd>0)return;const c=CLS[ci];cd=c.cd;
+ if(c.id==='cav')swing=.35;else if(c.id==='mag')swing=.3;else dash=.16;
+ fxAb(ci,P.x,P.z,hero.rotation.y,P.y);send({t:'ab'})}
+/* ---------- rede ---------- */
+const WSURL=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
+let ws=null,joined=false,noRetry=false;const rem=new Map();
+const send=o=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))};
+const setStatus=t=>{$('#on').textContent=t};
+const count=()=>setStatus('Jogadores online: '+(rem.size+1));
+function netClass(){if(!ws)connect();else if(joined)send({t:'cls',cls:ci})}
+function connect(){
+ if(location.protocol==='file:'){setStatus('Abre o jogo através do servidor (node server.js).');return}
+ ws=new WebSocket(WSURL);
+ ws.onopen=()=>send({t:'join',name:$('#nick').value.trim()||'Aventureiro',cls:ci});
+ ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}onMsg(m)};
+ ws.onclose=()=>{joined=false;ws=null;clearRemotes();if(!noRetry){setStatus('Sem ligação. A tentar de novo…');setTimeout(connect,3000)}};
+ ws.onerror=()=>{}}
+function label(name){const c=document.createElement('canvas');c.width=256;c.height=64;const x=c.getContext('2d');
+ x.font='700 28px Georgia,serif';x.textAlign='center';const w=Math.min(250,x.measureText(name).width+24);
+ x.fillStyle='rgba(16,36,49,.72)';x.fillRect(128-w/2,8,w,48);x.fillStyle='#f1ead8';x.fillText(name,128,42,230);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));sp.scale.set(2.4,.6,1);sp.position.y=2.95;return sp}
+function addRemote(p){if(rem.has(p.id))return;const g=new THREE.Group(),sh=new THREE.Mesh(shadow.geometry,shadow.material);sh.rotation.x=-Math.PI/2;scene.add(g,sh);
+ const lb=label(p.name);const e={g,sh,lb,cls:p.cls,x:p.x,z:p.z,rot:p.r,tx:p.x,tz:p.z,trot:p.r,m:p.m,mv:0,ph:0,swing:0,y:0};
+ e.R=build(CLS[p.cls],g);g.add(lb);rem.set(p.id,e)}
+function removeRemote(id){const e=rem.get(id);if(!e)return;scene.remove(e.g,e.sh);rem.delete(id)}
+function clearRemotes(){[...rem.keys()].forEach(removeRemote)}
+function addChat(n,t){const box=$('#chat'),d=document.createElement('div');d.textContent=n+': '+t;box.hidden=false;box.appendChild(d);while(box.children.length>8)box.firstChild.remove()}
+function onMsg(m){
+ if(m.t==='hello'){joined=true;clearRemotes();m.players.forEach(addRemote);count()}
+ else if(m.t==='join'){addRemote(m.p);count()}
+ else if(m.t==='leave'){removeRemote(m.id);count()}
+ else if(m.t==='pos'){const e=rem.get(m.id);if(e){e.tx=m.x;e.tz=m.z;e.trot=m.r;e.m=m.m}}
+ else if(m.t==='cls'){const e=rem.get(m.id);if(e){e.cls=m.cls;e.g.clear();e.R=build(CLS[m.cls],e.g);e.g.add(e.lb)}}
+ else if(m.t==='ab'){const e=rem.get(m.id);if(e){if(CLS[e.cls].id!=='lad')e.swing=.3;fxAb(e.cls,e.x,e.z,e.rot,e.y)}}
+ else if(m.t==='chat')addChat(m.name,m.m);
+ else if(m.t==='fix'){P.x=m.x;P.z=m.z}
+ else if(m.t==='full'){noRetry=true;setStatus('O servidor está cheio. Tenta mais tarde.')}}
+const aw=(a,b)=>{let d=b-a;return Math.atan2(Math.sin(d),Math.cos(d))};
+let nT=0,nx=0,nz=0,nr=0,nm=0;
+function netTick(dt,moving){
+ nT+=dt;const r=hero.rotation.y,mm=moving?1:0;
+ if(joined&&nT>=.066&&(Math.abs(P.x-nx)>.01||Math.abs(P.z-nz)>.01||Math.abs(r-nr)>.01||mm!==nm||nT>=1)){
+  nT=0;nx=P.x;nz=P.z;nr=r;nm=mm;send({t:'pos',x:+P.x.toFixed(2),z:+P.z.toFixed(2),r:+r.toFixed(2),m:mm})}
+ rem.forEach(e=>{const k=Math.min(1,dt*12);e.x+=(e.tx-e.x)*k;e.z+=(e.tz-e.z)*k;e.rot+=aw(e.rot,e.trot)*k;
+  e.y=(e.x>18.2&&Math.abs(e.z)<1.6)?.2:0;e.g.position.set(e.x,e.y,e.z);e.g.rotation.y=e.rot;e.sh.position.set(e.x,e.y+.03,e.z);
+  e.mv+=(e.m-e.mv)*Math.min(1,dt*10);e.ph+=dt*9*e.m;const s=Math.sin(e.ph)*.8*e.mv;
+  e.R.legL.rotation.x=s;e.R.legR.rotation.x=-s;e.R.armL.rotation.x=-s*.7;e.R.armR.rotation.x=s*.7;
+  if(e.swing>0){e.R.armR.rotation.x=-2.4*Math.sin((1-e.swing/.3)*Math.PI);e.swing-=dt}})}
+/* ---------- ciclo ---------- */
+let last=performance.now(),acc=0,fr=0,t=0;const tgt=new THREE.Vector3();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;t+=dt;
+ fr++;acc+=dt;if(acc>=.5){$('#fps').textContent=Math.round(fr/acc)+' FPS';fr=0;acc=0}
+ let moving=false;
+ if(playing){
+  const f=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0),r=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0);
+  if(keys.q)yaw+=dt*1.8;if(keys.e)yaw-=dt*1.8;
+  let dx=-Math.sin(yaw)*f+Math.cos(yaw)*r,dz=-Math.cos(yaw)*f-Math.sin(yaw)*r;const L=Math.hypot(dx,dz);
+  if(dash>0){dash-=dt;dx=Math.sin(hero.rotation.y);dz=Math.cos(hero.rotation.y);step(dx*40*dt,dz*40*dt);moving=true}
+  else if(L>0){dx/=L;dz/=L;step(dx*5*dt,dz*5*dt);moving=true;
+   let a=Math.atan2(dx,dz)-hero.rotation.y;a=Math.atan2(Math.sin(a),Math.cos(a));hero.rotation.y+=a*Math.min(1,dt*14)}
+ }else yaw+=dt*.15;
+ cd=Math.max(0,cd-dt);$('#cd').style.width=(100-100*cd/CLS[ci].cd)+'%';
+ P.y=(P.x>18.2&&Math.abs(P.z)<1.6)?.2:0;hero.position.set(P.x,P.y,P.z);shadow.position.set(P.x,P.y+.03,P.z);
+ mv+=((moving?1:0)-mv)*Math.min(1,dt*10);ph+=dt*(dash>0?20:9)*(moving?1:0);const s=Math.sin(ph)*.8*mv;
+ R.legL.rotation.x=s;R.legR.rotation.x=-s;R.armL.rotation.x=-s*.7;R.armR.rotation.x=s*.7;
+ if(swing>0){const p=1-swing/(CLS[ci].id==='cav'?.35:.3);swing-=dt;R.armR.rotation.x=-2.4*Math.sin(Math.min(1,p)*Math.PI)}
+ for(let i=fx.length-1;i>=0;i--){const e=fx[i];e.l+=dt;const q=e.l/e.life;
+  if(e.t==='r'){const k=1+(e.k-1)*q;e.m.scale.set(k,k,k);e.m.material.opacity=.9*(1-q)}
+  else{e.m.position.x+=e.v[0]*dt;e.m.position.z+=e.v[1]*dt;e.m.material.opacity=1}
+  if(q>=1){scene.remove(e.m);e.m.geometry.dispose();e.m.material.dispose();fx.splice(i,1)}}
+ netTick(dt,moving);
+ boats.forEach((b,i)=>{b.position.y=Math.sin(t*1.3+i*2)*.07;b.rotation.z=Math.sin(t*1+i)*.02});
+ const cp=Math.cos(pitch);tgt.set(P.x+Math.sin(yaw)*cp*dist,P.y+1.7+Math.sin(pitch)*dist,P.z+Math.cos(yaw)*cp*dist);
+ cam.position.lerp(tgt,1-Math.exp(-dt*10));cam.lookAt(P.x,P.y+1.5,P.z);
+ renderer.render(scene,cam)}
+cam.position.set(P.x,3,P.z+dist);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
