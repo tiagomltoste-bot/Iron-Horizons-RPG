@@ -25,6 +25,10 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:
 #pick p{margin:0;color:#d5b978;font-size:15px}
 #cards{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
 #on{font-size:12px}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:4px;overflow:hidden;width:170px}
+#hpb{height:100%;width:100%;background:#c4553a}
+#xpb{height:100%;width:0;background:var(--gold)}
+#hurt{position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 130px rgba(200,40,30,.75);opacity:0;transition:opacity .35s}
 #chat{right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:min(280px,45vw);font-size:12px}
 #chat div{overflow-wrap:anywhere}
 #msg{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(340px,40vw);font:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
@@ -37,9 +41,10 @@ canvas{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:
 </style>
 </head>
 <body>
-<div id="hud" class="box"><b id="cn"></b><br><span id="fps">0 FPS</span><br><span id="on">A ligar quando escolheres a classe</span></div>
+<div id="hud" class="box"><b id="cn"></b><br><span id="fps">0 FPS</span><br><span id="lv">Nível 1</span><div class="bar"><div id="hpb"></div></div><div class="bar"><div id="xpb"></div></div><span id="on">A ligar quando escolheres a classe</span></div>
+<div id="hurt"></div>
 <div id="chat" class="box" hidden></div><input id="msg" maxlength="200" placeholder="Enter para falar" autocomplete="off" aria-label="Mensagem de chat">
-<div id="help" class="box">WASD ou setas: andar. Arrastar com o rato: rodar a câmara. Roda do rato: zoom. Espaço: habilidade. Enter: falar. C: mudar de classe.</div>
+<div id="help" class="box">WASD ou setas: andar. Arrastar com o rato: rodar a câmara. Roda do rato: zoom. Espaço: habilidade. Enter: falar. C: mudar de classe. Fora de Portavel há monstros; dentro da aldeia estás seguro e recuperas vida.</div>
 <div id="ab" class="box"><span id="an"></span><div id="bar"><div id="cd"></div></div></div>
 <div id="pick"><h1>Iron Horizons: RPG</h1><p>Protótipo de Portavel. Escolhe a tua classe.</p><input id="nick" maxlength="16" placeholder="O teu nome" autocomplete="off" aria-label="O teu nome"><div id="cards"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -214,7 +219,7 @@ function addRemote(p){if(rem.has(p.id))return;const g=new THREE.Group(),sh=new T
  const lb=label(p.name);const e={g,sh,lb,cls:p.cls,x:p.x,z:p.z,rot:p.r,tx:p.x,tz:p.z,trot:p.r,m:p.m,mv:0,ph:0,swing:0,y:0};
  e.R=build(CLS[p.cls],g);g.add(lb);rem.set(p.id,e)}
 function removeRemote(id){const e=rem.get(id);if(!e)return;scene.remove(e.g,e.sh);rem.delete(id)}
-function clearRemotes(){[...rem.keys()].forEach(removeRemote)}
+function clearRemotes(){[...rem.keys()].forEach(removeRemote);en.forEach(e=>scene.remove(e.g));en.clear()}
 function addChat(n,t){const box=$('#chat'),d=document.createElement('div');d.textContent=n+': '+t;box.hidden=false;box.appendChild(d);while(box.children.length>8)box.firstChild.remove()}
 function onMsg(m){
  if(m.t==='hello'){joined=true;clearRemotes();m.players.forEach(addRemote);count()}
@@ -225,10 +230,50 @@ function onMsg(m){
  else if(m.t==='ab'){const e=rem.get(m.id);if(e){if(CLS[e.cls].id!=='lad')e.swing=.3;fxAb(e.cls,e.x,e.z,e.rot,e.y)}}
  else if(m.t==='chat')addChat(m.name,m.m);
  else if(m.t==='fix'){P.x=m.x;P.z=m.z}
+ else if(m.t==='en')m.e.forEach(updEnemy);
+ else if(m.t==='eh'){const e=en.get(m.id);if(e){e.pulse=.15;dmgNum(e,m.d)}}
+ else if(m.t==='ea'){const e=en.get(m.id);if(e)e.lunge=.25}
+ else if(m.t==='me')setMe(m);
+ else if(m.t==='sys')addChat('Aldrovar',m.m);
  else if(m.t==='full'){noRetry=true;setStatus('O servidor está cheio. Tenta mais tarde.')}}
 const aw=(a,b)=>{let d=b-a;return Math.atan2(Math.sin(d),Math.cos(d))};
+/* ---------- inimigos ---------- */
+const en=new Map(),dn=[],EN=['Lobo cinzento','Goblin'];let lastHp=0;
+function mkEnemy(k){const g=new THREE.Group(),legs=[];
+ if(k===0){const c=0x8a8f99,d=0x6b7078;add(g,B(.55,.5,1.3),c,0,.75,0);add(g,B(.4,.4,.5),c,0,.95,.85);add(g,B(.2,.2,.3),d,0,.85,1.2);
+  add(g,B(.1,.2,.1),d,-.14,1.25,.8);add(g,B(.1,.2,.1),d,.14,1.25,.8);add(g,B(.15,.15,.7),c,0,.85,-.95).rotation.x=-.4;
+  [[-.2,.5],[.2,.5],[-.2,-.5],[.2,-.5]].forEach(p=>{const l=new THREE.Group();l.position.set(p[0],.5,p[1]);g.add(l);add(l,B(.14,.5,.14),d,0,-.25,0);legs.push(l)})}
+ else{add(g,B(.5,.6,.35),0x5b4332,0,1,0);add(g,S(.26),0x7fb04a,0,1.55,0);add(g,B(.7,.1,.1),0x7fb04a,0,1.58,0);
+  add(g,B(.1,.1,.1),0xffe066,-.1,1.6,.22);add(g,B(.1,.1,.1),0xffe066,.1,1.6,.22);add(g,B(.12,.6,.12),0x6b4a2f,.42,.85,.25);
+  [-.14,.14].forEach(x=>{const l=new THREE.Group();l.position.set(x,.7,0);g.add(l);add(l,B(.18,.7,.18),0x6d9a3a,0,-.35,0);legs.push(l)})}
+ return{g,legs}}
+function elabel(e){const x=e.cv.getContext('2d');x.clearRect(0,0,128,32);x.font='bold 13px Georgia,serif';x.textAlign='center';
+ x.strokeStyle='rgba(0,0,0,.6)';x.lineWidth=3;x.strokeText(EN[e.k],64,12);x.fillStyle='#fff';x.fillText(EN[e.k],64,12);
+ x.fillStyle='rgba(0,0,0,.6)';x.fillRect(14,18,100,9);x.fillStyle='#c4553a';x.fillRect(15,19,98*Math.max(0,e.hp/e.mhp),7);e.tex.needsUpdate=true}
+function updEnemy(a){let e=en.get(a[0]);
+ if(!e){const m=mkEnemy(a[1]),cv=document.createElement('canvas');cv.width=128;cv.height=32;const tex=new THREE.CanvasTexture(cv);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));sp.scale.set(2.4,.6,1);sp.position.y=a[1]?2:1.8;m.g.add(sp);scene.add(m.g);
+  e={id:a[0],k:a[1],g:m.g,legs:m.legs,cv,tex,x:a[2],z:a[3],rot:a[4],hp:-1,mhp:a[6],tx:a[2],tz:a[3],trot:a[4],ph:0,pulse:0,lunge:0,mv:0};en.set(a[0],e)}
+ const was=e.hp<=0;e.tx=a[2];e.tz=a[3];e.trot=a[4];e.mhp=a[6];
+ if(was&&a[5]>0){e.x=a[2];e.z=a[3];e.rot=a[4]}
+ if(a[5]!==e.hp){e.hp=a[5];elabel(e)}
+ e.g.visible=e.hp>0}
+function dmgNum(e,d){const c=document.createElement('canvas');c.width=64;c.height=32;const x=c.getContext('2d');x.font='bold 22px Georgia,serif';x.textAlign='center';
+ x.strokeStyle='rgba(0,0,0,.7)';x.lineWidth=4;x.strokeText('-'+d,32,24);x.fillStyle='#ffd27a';x.fillText('-'+d,32,24);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));s.scale.set(1.3,.65,1);s.position.set(e.x,2.4,e.z);scene.add(s);dn.push({s,l:0})}
+function enTick(dt){en.forEach(e=>{if(!e.g.visible)return;const px=e.x,pz=e.z,k=Math.min(1,dt*10);
+  e.x+=(e.tx-e.x)*k;e.z+=(e.tz-e.z)*k;e.rot+=aw(e.rot,e.trot)*k;
+  const sp=Math.hypot(e.x-px,e.z-pz)/Math.max(dt,.001);e.mv+=((sp>.4?1:0)-e.mv)*k;e.ph+=dt*10*e.mv;
+  const s=Math.sin(e.ph)*.7*e.mv;e.legs.forEach((l,i)=>{l.rotation.x=i%2?-s:s});
+  let sc=1,off=0;if(e.pulse>0){e.pulse-=dt;sc=1+.2*Math.max(0,e.pulse)/.15}
+  if(e.lunge>0){e.lunge-=dt;off=.5*Math.sin(Math.max(0,e.lunge)/.25*Math.PI)}
+  e.g.position.set(e.x+Math.sin(e.rot)*off,0,e.z+Math.cos(e.rot)*off);e.g.rotation.y=e.rot;e.g.scale.setScalar((e.k?.9:1)*sc)});
+ for(let i=dn.length-1;i>=0;i--){const d=dn[i];d.l+=dt;d.s.position.y+=dt*1.2;d.s.material.opacity=Math.max(0,1-d.l/.9);
+  if(d.l>=.9){scene.remove(d.s);d.s.material.map.dispose();d.s.material.dispose();dn.splice(i,1)}}}
+function setMe(m){$('#lv').textContent='Nível '+m.lv+', '+m.hp+'/'+m.mhp+' PV';$('#hpb').style.width=(100*m.hp/m.mhp)+'%';$('#xpb').style.width=(100*m.xp/m.xpn)+'%';
+ if(lastHp&&m.hp<lastHp){const x=$('#hurt');x.style.opacity=1;setTimeout(()=>{x.style.opacity=0},150)}lastHp=m.hp}
 let nT=0,nx=0,nz=0,nr=0,nm=0;
-function netTick(dt,moving){
+function netTick(dt,moving){enTick(dt);
  nT+=dt;const r=hero.rotation.y,mm=moving?1:0;
  if(joined&&nT>=.066&&(Math.abs(P.x-nx)>.01||Math.abs(P.z-nz)>.01||Math.abs(r-nr)>.01||mm!==nm||nT>=1)){
   nT=0;nx=P.x;nz=P.z;nr=r;nm=mm;send({t:'pos',x:+P.x.toFixed(2),z:+P.z.toFixed(2),r:+r.toFixed(2),m:mm})}

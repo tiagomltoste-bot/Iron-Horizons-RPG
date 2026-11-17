@@ -29,11 +29,18 @@ Os planos gratuitos mudam com frequência e alguns adormecem quando ninguém jog
 
 WASD ou setas: andar. Rato (arrastar): câmara. Roda do rato: zoom. Espaço: habilidade. Enter: falar. C: mudar de classe.
 
+## Combate
+
+- Fora de Portavel há lobos e goblins. Dentro da aldeia (e no cais) estás seguro e recuperas vida.
+- Cada classe ataca com a sua habilidade (Espaço). Os monstros dão experiência e, ao subires de nível, ficas com mais vida e mais dano.
+- Se a vida chegar a zero, voltas a Portavel com a vida cheia. Os monstros renascem ao fim de 20 segundos.
+- Todo o combate é decidido no servidor.
+
 ## Notas técnicas
 
 - Máximo de 20 jogadores. As posições são validadas no servidor (limites do mapa e velocidade).
 - Os nomes e as mensagens são limpos no servidor. Não há filtro de palavras.
 - O jogo carrega o Three.js a partir do cdnjs. Se a rede da escola o bloquear, avisa-me e mudamos.
-- O progresso (nível, inventário) ainda não é guardado; isso vem com a base de dados.
+- O progresso (nível, experiência) ainda não é guardado: se saíres ou o servidor reiniciar, voltas ao nível 1. Isso vem com a base de dados.
 
 Esta versão tem os 4 ficheiros todos na mesma pasta, sem subpastas, para ser fácil de carregar no GitHub.
