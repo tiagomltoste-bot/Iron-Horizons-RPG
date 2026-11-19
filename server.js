@@ -36,7 +36,7 @@ server.on('upgrade', (req, sock) => {
   const acc = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
   sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + acc + '\r\n\r\n');
   sock.setNoDelay(true);
-  const c = { sock, buf: Buffer.alloc(0), frag: null, joined: false, seen: Date.now(), win: Date.now(), msgs: 0, lastAb: 0, lastChat: 0 };
+  const c = { sock, buf: Buffer.alloc(0), frag: null, joined: false, seen: Date.now(), win: Date.now(), msgs: 0, lastAb: 0, lastChat: 0, tries: 0 };
   sock.on('data', d => { c.seen = Date.now(); c.buf = Buffer.concat([c.buf, d]); if (c.buf.length > 300000) { sock.destroy(); return; } parse(c); });
   sock.on('close', () => leave(c));
   sock.on('error', () => sock.destroy());
@@ -77,17 +77,7 @@ function handle(c, s) {
   const now = Date.now();
   if (now - c.win > 1000) { c.win = now; c.msgs = 0; }
   if (++c.msgs > 60) return;
-  if (m.t === 'join' && !c.joined) {
-    if (players.size >= MAX_PLAYERS) { send(c, { t: 'full' }); c.sock.end(); return; }
-    Object.assign(c, { joined: true, id: nextId++, name: cleanName(m.name), cls: clsOf(m.cls), x: 0, z: 10, r: Math.PI, m: 0, last: now, lv: 1, xp: 0 });
-    c.mhp = CLSD[c.cls].hp; c.hp = c.mhp;
-    players.set(c.id, c);
-    send(c, { t: 'hello', id: c.id, players: [...players.values()].filter(p => p !== c).map(pub) });
-    sendMe(c);
-    bcast({ t: 'join', p: pub(c) }, c);
-    console.log('+ ' + c.name + ' (' + players.size + ' online)');
-    return;
-  }
+  if (m.t === 'auth' && !c.joined && !c.authing) { authenticate(c, m); return; }
   if (!c.joined) return;
   if (m.t === 'pos' && num(m.x) && num(m.z) && num(m.r)) {
     const dt = Math.max(.05, (now - c.last) / 1000), maxd = 45 * dt + 1.5;
@@ -96,7 +86,7 @@ function handle(c, s) {
     Object.assign(c, { x, z, r: m.r, m: m.m ? 1 : 0, last: now });
     bcast({ t: 'pos', id: c.id, x, z, r: c.r, m: c.m }, c);
   } else if (m.t === 'cls') {
-    c.cls = clsOf(m.cls); c.mhp = CLSD[c.cls].hp + 10 * (c.lv - 1); c.hp = Math.min(c.hp, c.mhp); sendMe(c);
+    c.cls = clsOf(m.cls); c.mhp = CLSD[c.cls].hp + 10 * (c.lv - 1); c.hp = Math.min(c.hp, c.mhp); sendMe(c); c.dirty = true; saveAcc(c);
     bcast({ t: 'cls', id: c.id, cls: c.cls }, c);
   } else if (m.t === 'ab') {
     useAb(c, now);
@@ -109,6 +99,8 @@ function handle(c, s) {
 
 function leave(c) {
   if (!c.joined || !players.delete(c.id)) return;
+  if (byKey.get(c.key) === c) byKey.delete(c.key);
+  saveAcc(c);
   bcast({ t: 'leave', id: c.id });
   console.log('- ' + c.name + ' (' + players.size + ' online)');
 }
@@ -125,7 +117,9 @@ const sys = (c, m) => send(c, { t: 'sys', m });
 
 function giveXp(c, n) {
   c.xp += n;
-  while (c.xp >= c.lv * 40) { c.xp -= c.lv * 40; c.lv++; c.mhp += 10; c.hp = c.mhp; sys(c, 'Subiste para o nível ' + c.lv + '!'); }
+  c.dirty = true; let up = false;
+  while (c.xp >= c.lv * 40) { c.xp -= c.lv * 40; c.lv++; c.mhp += 10; c.hp = c.mhp; up = true; sys(c, 'Subiste para o nível ' + c.lv + '!'); }
+  if (up) saveAcc(c);
   sendMe(c);
 }
 function dmgEnemy(e, d, c) {
@@ -144,11 +138,15 @@ function useAb(c, now) {
     if (e.hp <= 0) continue;
     const dx = e.x - c.x, dz = e.z - c.z, dist = Math.hypot(dx, dz), dot = dist > 0 ? (dx * fx + dz * fz) / dist : 1;
     if (c.cls === 0 && dist < 3 && dot > .2) hits.push([e, Math.round(18 * mult), dist]);
-    else if (c.cls === 1 && dist < 15 && dot > .94) hits.push([e, Math.round(22 * mult), dist]);
     else if (c.cls === 2 && dist < 3.2 && dot > -.2) hits.push([e, Math.round(16 * mult), dist]);
   }
-  if (c.cls === 1 && hits.length) hits = [hits.sort((a, b) => a[2] - b[2])[0]];
+  if (c.cls === 1) spawnOrb(c, Math.round(22 * mult), fx, fz);
   hits.forEach(h => dmgEnemy(h[0], h[1], c));
+}
+const orbs = []; let nextOrb = 1;
+function spawnOrb(c, dmg, fx, fz) {   // o dano só acontece quando a bola chega ao inimigo
+  const o = { id: nextOrb++, owner: c, x: c.x + fx * .8, z: c.z + fz * .8, vx: fx * 14, vz: fz * 14, life: 1.3, dmg };
+  orbs.push(o); bcast({ t: 'pj', id: o.id, x: +o.x.toFixed(2), z: +o.z.toFixed(2), vx: +o.vx.toFixed(2), vz: +o.vz.toFixed(2), life: o.life });
 }
 function die(c) {
   c.hp = c.mhp; c.x = 0; c.z = 10; c.last = Date.now();
@@ -170,8 +168,83 @@ setInterval(() => {
     if (!t && e.hp < e.mhp) e.hp = Math.min(e.mhp, e.hp + e.mhp * .01);
     if (t && d < 1.9 && now >= e.nextAtk) { e.nextAtk = now + EK[e.k].cd; t.hp -= EK[e.k].dmg; bcast({ t: 'ea', id: e.id }); if (t.hp <= 0) die(t); else sendMe(t); }
   }
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    const o = orbs[i], nx = o.x + o.vx * dt, nz = o.z + o.vz * dt, sx = nx - o.x, sz = nz - o.z, l2 = sx * sx + sz * sz;
+    let hit = null, bt = 2;
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const t = l2 ? Math.max(0, Math.min(1, ((e.x - o.x) * sx + (e.z - o.z) * sz) / l2)) : 0;
+      if (Math.hypot(o.x + sx * t - e.x, o.z + sz * t - e.z) < .9 && t < bt) { bt = t; hit = e; }
+    }
+    if (hit) { orbs.splice(i, 1); bcast({ t: 'pk', id: o.id, x: +(o.x + sx * bt).toFixed(2), z: +(o.z + sz * bt).toFixed(2) }); dmgEnemy(hit, o.dmg, o.owner); continue; }
+    o.x = nx; o.z = nz; o.life -= dt;
+    if (o.life <= 0) { orbs.splice(i, 1); bcast({ t: 'pk', id: o.id, x: +o.x.toFixed(2), z: +o.z.toFixed(2) }); }
+  }
   if (tick % 5 === 0) for (const p of players.values()) if (safe(p) && p.hp < p.mhp) { p.hp = Math.min(p.mhp, p.hp + 2.5); sendMe(p); }
   if (players.size) bcast({ t: 'en', e: enemies.map(e => [e.id, e.k, +e.x.toFixed(2), +e.z.toFixed(2), +e.r.toFixed(2), Math.round(e.hp), e.mhp]) });
 }, 100);
+
+/* ---------- contas e progresso guardado ---------- */
+// Com UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN definidos, as contas ficam numa base de dados online.
+// Sem elas, ficam no ficheiro accounts.json (serve para testar no teu computador; na Render perde-se ao reiniciar).
+const UP_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, ''), UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const DATA_FILE = path.join(__dirname, 'accounts.json'); let mem = null;
+const loadMem = () => { if (!mem) { try { mem = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { mem = {}; } } return mem; };
+async function upstash(cmd) {
+  const r = await fetch(UP_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + UP_TOKEN }, body: JSON.stringify(cmd) });
+  if (!r.ok) throw new Error('base de dados: ' + r.status); return (await r.json()).result;
+}
+async function dbGet(k) { if (UP_URL) { const v = await upstash(['GET', k]); return v ? JSON.parse(v) : null; } return loadMem()[k] || null; }
+async function dbSet(k, v) { if (UP_URL) { await upstash(['SET', k, JSON.stringify(v)]); return; } loadMem()[k] = v; fs.writeFile(DATA_FILE, JSON.stringify(mem), () => {}); }
+async function dbCreate(k, v) { if (UP_URL) return (await upstash(['SET', k, JSON.stringify(v), 'NX'])) === 'OK'; if (loadMem()[k]) return false; await dbSet(k, v); return true; }
+const scrypt = (p, salt) => new Promise((res, rej) => crypto.scrypt(p, salt, 32, (e, k) => e ? rej(e) : res(k)));
+const byKey = new Map(), failures = new Map(); let regs = [];
+const aerr = (c, m) => send(c, { t: 'autherr', m });
+
+function saveAcc(c) {
+  if (!c.acc || !c.dirty) return Promise.resolve();
+  c.dirty = false; Object.assign(c.acc, { cls: c.cls, lv: c.lv, xp: c.xp, seen: Date.now() });
+  return dbSet(c.key, c.acc).catch(e => { c.dirty = true; console.log('erro ao guardar:', e.message); });
+}
+async function authenticate(c, m) {
+  c.authing = true;
+  try {
+    if (++c.tries > 8) { aerr(c, 'Demasiadas tentativas. Recarrega a página.'); c.sock.end(); return; }
+    const name = String(m.name || '').trim(), pass = String(m.pass || ''), now = Date.now();
+    if (!/^\w{3,16}$/.test(name) || pass.length < 6 || pass.length > 64) return aerr(c, 'Nome (3 a 16 letras, números ou _) ou palavra-passe (mínimo 6) inválidos.');
+    const key = 'acc:' + name.toLowerCase(), f = failures.get(key);
+    if (f && f.until > now) return aerr(c, 'Muitas tentativas. Espera um minuto.');
+    let acc;
+    if (m.mode === 'register') {
+      regs = regs.filter(t => now - t < 600000);
+      if (regs.length >= 20) return aerr(c, 'Demasiados registos de seguida. Tenta daqui a uns minutos.');
+      regs.push(now);
+      const salt = crypto.randomBytes(16);
+      acc = { name, s: salt.toString('hex'), h: (await scrypt(pass, salt)).toString('hex'), created: now, cls: clsOf(m.cls), lv: 1, xp: 0 };
+      if (!(await dbCreate(key, acc))) return aerr(c, 'Esse nome já existe. Escolhe outro ou entra com a tua conta.');
+    } else {
+      acc = await dbGet(key);
+      const ok = acc && crypto.timingSafeEqual(await scrypt(pass, Buffer.from(acc.s, 'hex')), Buffer.from(acc.h, 'hex'));
+      if (!ok) {
+        const fl = failures.get(key) || { n: 0, until: 0 }; if (++fl.n >= 5) { fl.n = 0; fl.until = now + 60000; } failures.set(key, fl);
+        return aerr(c, 'Nome ou palavra-passe errados.');
+      }
+      failures.delete(key);
+    }
+    if (c.sock.destroyed) return;
+    if (players.size >= MAX_PLAYERS) { send(c, { t: 'full' }); c.sock.end(); return; }
+    if (byKey.has(key)) return aerr(c, 'Esta conta já está ligada noutro sítio.');
+    Object.assign(c, { joined: true, id: nextId++, key, acc, name: acc.name, cls: clsOf(acc.cls), x: 0, z: 10, r: Math.PI, m: 0, last: now, lv: acc.lv || 1, xp: acc.xp || 0, dirty: false });
+    c.mhp = CLSD[c.cls].hp + 10 * (c.lv - 1); c.hp = c.mhp;
+    players.set(c.id, c); byKey.set(key, c);
+    send(c, { t: 'hello', id: c.id, name: c.name, cls: c.cls, players: [...players.values()].filter(p => p !== c).map(pub) });
+    sendMe(c); bcast({ t: 'join', p: pub(c) }, c);
+    console.log('+ ' + c.name + ' (' + players.size + ' online)');
+  } catch (e) { console.log('erro de autenticação:', e.message); aerr(c, 'Erro no servidor. Tenta de novo.'); }
+  finally { c.authing = false; }
+}
+setInterval(() => { for (const c of players.values()) saveAcc(c); }, 300000);
+process.on('SIGTERM', async () => { await Promise.all([...players.values()].map(saveAcc)); process.exit(0); });
+console.log(UP_URL ? 'Contas: base de dados online (Upstash).' : 'Contas: ficheiro accounts.json (sem base de dados online configurada).');
 
 server.listen(PORT, () => console.log('Iron Horizons a correr em http://localhost:' + PORT));
