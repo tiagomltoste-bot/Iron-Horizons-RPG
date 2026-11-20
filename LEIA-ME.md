@@ -29,6 +29,10 @@ Os planos gratuitos mudam com frequência e alguns adormecem quando ninguém jog
 
 WASD ou setas: andar. Rato (arrastar): câmara. Roda do rato: zoom. Espaço: habilidade. Enter: falar. C: mudar de classe.
 
+## O mapa
+
+O continente de Aldrovar está todo jogável: Portavel numa ilha no centro do lago (liga-se à margem por uma calçada para leste), e à volta Eldrath (planície), Sylvareth (floresta, a oeste), Durnhold (neve, a norte), Tharkan (cordilheira, a nordeste), Ossandar (deserto, a sul) e Cinzamor (basalto e vulcão, a sudeste). Aerthal flutua no céu, por cima de Tharkan. O canto superior esquerdo mostra a região onde estás. Ainda não há edifícios nem NPCs fora de Portavel.
+
 ## Contas e progresso
 
 - Cada jogador cria uma conta (nome e palavra-passe). As palavras-passe são guardadas já misturadas (nunca em texto simples).

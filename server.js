@@ -81,7 +81,7 @@ function handle(c, s) {
   if (!c.joined) return;
   if (m.t === 'pos' && num(m.x) && num(m.z) && num(m.r)) {
     const dt = Math.max(.05, (now - c.last) / 1000), maxd = 45 * dt + 1.5;
-    const x = clamp(m.x, -50, 34.5), z = clamp(m.z, -44, 44);
+    const x = clamp(m.x, -295, 295), z = clamp(m.z, -295, 295);
     if (Math.hypot(x - c.x, z - c.z) > maxd) { send(c, { t: 'fix', x: c.x, z: c.z }); return; }
     Object.assign(c, { x, z, r: m.r, m: m.m ? 1 : 0, last: now });
     bcast({ t: 'pos', id: c.id, x, z, r: c.r, m: c.m }, c);
@@ -108,9 +108,12 @@ setInterval(() => { const t = Date.now(); for (const c of players.values()) if (
 
 
 /* ---------- combate e inimigos (o servidor decide tudo) ---------- */
-const safe = p => p.x > -23 && p.z > -18 && p.z < 16;   // Portavel e o cais: zona segura
+const safe = p => Math.hypot(p.x, p.z) < 34;   // Portavel e o cais: zona segura
 const EK = [{ hp: 45, dmg: 7, speed: 3.4, aggro: 11, cd: 1100, xp: 15 }, { hp: 30, dmg: 5, speed: 2.8, aggro: 10, cd: 1000, xp: 10 }];
-const SPAWNS = [[-32, -26], [-36, -12], [-31, 0], [-37, 12], [-32, 26], [-40, 36], [-18, -34], [-6, -38], [6, -33], [14, -37], [-24, -36], [0, -28]];
+const SPAWNS = [];
+[[-180, -10, 6], [-20, -190, 6], [170, -120, 4], [-20, 165, 6], [165, 140, 6], [110, -30, 2], [-110, 60, 2]].forEach(([cx, cz, n], g) => {
+  for (let i = 0; i < n; i++) { const a = i / n * 6.283 + g, r = 18 + ((i * 7 + g * 3) % 5) * 6; SPAWNS.push([Math.round(cx + Math.cos(a) * r), Math.round(cz + Math.sin(a) * r)]); }
+});
 const enemies = SPAWNS.map((p, i) => ({ id: i, k: i % 2, sx: p[0], sz: p[1], x: p[0], z: p[1], r: 0, hp: EK[i % 2].hp, mhp: EK[i % 2].hp, target: null, nextAtk: 0, respawnAt: 0, hitters: new Set() }));
 const sendMe = c => send(c, { t: 'me', hp: Math.round(c.hp), mhp: c.mhp, lv: c.lv, xp: c.xp, xpn: c.lv * 40 });
 const sys = (c, m) => send(c, { t: 'sys', m });
