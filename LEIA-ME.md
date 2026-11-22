@@ -31,7 +31,12 @@ WASD ou setas: andar. Rato (arrastar): câmara. Roda do rato: zoom. Espaço: hab
 
 ## O mapa
 
-O continente de Aldrovar está todo jogável: Portavel numa ilha no centro do lago (liga-se à margem por uma calçada para leste), e à volta Eldrath (planície), Sylvareth (floresta, a oeste), Durnhold (neve, a norte), Tharkan (cordilheira, a nordeste), Ossandar (deserto, a sul) e Cinzamor (basalto e vulcão, a sudeste). Aerthal flutua no céu, por cima de Tharkan. O canto superior esquerdo mostra a região onde estás. Ainda não há edifícios nem NPCs fora de Portavel.
+O continente de Aldrovar tem cerca de 2,6 km de lado (uns 20 vezes a área da versão anterior), com 4 km² de chão para andar. Portavel fica numa ilha no centro de um grande lago e liga-se à margem por uma calçada para leste (cerca de 300 m). À volta ficam Eldrath (planície), Sylvareth (floresta, a oeste), Durnhold (neve, a norte), Tharkan (cordilheira, a nordeste), Ossandar (deserto, a sul) e Cinzamor (basalto e vulcão, a sudeste). Aerthal flutua no céu, por cima de Tharkan, e vê-se de longe.
+
+- O chão é carregado em blocos, só à tua volta, com menos detalhe ao longe. Por isso o mapa grande não pesa mais no Chromebook.
+- Só se anda onde a inclinação o permite. Água e encostas muito íngremes bloqueiam; o resto é livre.
+- Os 97 monstros estão espalhados pelas regiões; o servidor só envia os que estão perto de ti.
+- Ainda não há edifícios nem NPCs fora de Portavel.
 
 ## Contas e progresso
 
